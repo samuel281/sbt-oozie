@@ -1,0 +1,67 @@
+<workflow-app name="[PZ] Build Item similarity model" xmlns="uri:oozie:workflow:0.4">
+    <start to="populate_input"/>
+    <action name="populate_input">
+        <hive xmlns="uri:oozie:hive-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <job-xml>/user/datalab/files/conf/hive-site.xml</job-xml>
+            <script>${wf:appPath()}/hive/populate_${SIM_TYPE}_${SIM_DATA}.sql</script>
+            <param>SIM_INPUT=${SIM_INPUT}</param>
+            <param>INPUT_FROM_DATE=${INPUT_FROM_DATE}</param>
+        </hive>
+        <ok to="generate_similarity"/>
+        <error to="kill"/>
+    </action>
+    <action name="generate_similarity">
+        <shell xmlns="uri:oozie:shell-action:0.1">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${SIM_OUTPUT}"/>
+                <delete path="${MAHOUT_TEMP}"/>
+            </prepare>
+            <exec>mahout_similarity.sh</exec>
+            <argument>${INPUT}</argument>
+            <argument>${SIM_OUTPUT}</argument>
+            <argument>${NUM_SIM_ITEM}</argument>
+            <argument>${MAHOUT_TEMP}</argument>
+            <argument>${NUM_REDUCER}</argument>
+            <file>${wf:appPath()}/shell/mahout_similarity.sh#mahout_similarity.sh</file>
+        </shell>
+        <ok to="jsonize_similarity"/>
+        <error to="kill"/>
+    </action>
+    <action name="jsonize_similarity">
+        <shell xmlns="uri:oozie:shell-action:0.1">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <prepare>
+                <delete path="${SIM_JSON}"/>
+            </prepare>
+            <exec>jsonize.sh</exec>
+            <argument>${SIM_OUTPUT}</argument>
+            <argument>${SIM_JSON}</argument>
+            <argument>${SIM_TYPE}</argument>
+            <file>${wf:appPath()}/lib/itemcf-assembly-1.0.jar#driver.jar</file>
+            <file>${wf:appPath()}/shell/jsonize.sh</file>
+        </shell>
+        <ok to="load_similarity"/>
+        <error to="kill"/>
+    </action>
+    <action name="load_similarity">
+        <hive xmlns="uri:oozie:hive-action:0.2">
+            <job-tracker>${jobTracker}</job-tracker>
+            <name-node>${nameNode}</name-node>
+            <job-xml>/user/datalab/files/conf/hive-site.xml</job-xml>
+            <script>${wf:appPath()}/hive/load_data.sql</script>
+            <param>SIM_JSON=${SIM_JSON}</param>
+            <param>SIM_TABLE=${SIM_TABLE}</param>
+        </hive>
+        <ok to="end"/>
+        <error to="kill"/>
+    </action>
+    <kill name="kill">
+        <message>Action failed, error message[${wf:errorMessage(wf:lastErrorNode())}]</message>
+    </kill>
+    <end name="end"/>
+</workflow-app>
